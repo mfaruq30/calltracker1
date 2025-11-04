@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-900">
+<head>
+    <meta charset="UTF-R">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Options Portfolio Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .stat-card {
+            background-color: #1f2937; /* gray-800 */
+            border: 1px solid #374151; /* gray-700 */
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            padding: 1rem;
+        }
+        .modal-content {
+            background-color: #1f2937; /* gray-800 */
+            border: 1px solid #374151; /* gray-700 */
+            padding: 2rem;
+            border-radius: 0.5rem;
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-close-btn {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            color: #9ca3af; /* gray-400 */
+            cursor: pointer;
+        }
+        .modal-close-btn:hover {
+            color: #f3f4f6; /* gray-100 */
+        }
+        .table-header {
+            background-color: #374151; /* gray-700 */
+        }
+        .table-row {
+            border-bottom: 1px solid #374151; /* gray-700 */
+        }
+        .table-row:last-child {
+            border-bottom: none;
+        }
+        .profit {
+            color: #22c55e; /* green-500 */
+        }
+        .loss {
+            color: #ef4444; /* red-500 */
+        }
+        .loader {
+            width: 48px;
+            height: 48px;
+            border: 5px solid #FFF;
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes rotation {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+        .probability-highlight {
+            background-color: #374151; /* gray-700 */
+            border-left: 4px solid #3b82f6; /* blue-500 */
+            padding: 1rem;
+            border-radius: 0.25rem;
+            margin-top: 1rem;
+        }
+        .probability-highlight p {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+        .action-btn {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        .action-btn-blue {
+            background-color: #2563eb; /* blue-600 */
+            color: white;
+        }
+        .action-btn-blue:hover {
+            background-color: #1d4ed8; /* blue-700 */
+        }
+        .action-btn-gray {
+            background-color: #4b5563; /* gray-600 */
+            color: white;
+        }
+        .action-btn-gray:hover {
+            background-color: #374151; /* gray-700 */
+        }
+        .action-btn-icon {
+            color: #9ca3af; /* gray-400 */
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .action-btn-icon:hover {
+            color: #ef4444; /* red-500 */
+        }
+    </style>
+</head>
+<body class="h-full bg-gray-900 text-gray-200 p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+            <h1 class="text-3xl font-bold text-white">Options Portfolio Tracker</h1>
+            <div class="flex gap-2">
+                <button onclick="openAddModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all duration-200">
+                    Add New Trade
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- Left Column: Summary & Research -->
+            <div class="lg:col-span-1 space-y-6">
+                
+                <!-- Summary -->
+                <div class="stat-card p-6 rounded-lg shadow-lg">
+                    <h2 class="text-xl font-semibold mb-4 text-white">Portfolio Summary</h2>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Total Deposits:</span>
+                            <span id="summary-deposits" class="text-lg font-semibold text-white">$0.00</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Realized P/L:</span>
+                            <span id="summary-realized-pl" class="text-lg font-semibold text-white">$0.00</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Unrealized P/L:</span>
+                            <span id="summary-unrealized-pl" class="text-lg font-semibold text-white">$0.00</span>
+                        </div>
+                        <hr class="border-gray-700 my-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Total Equity:</span>
+                            <span id="summary-equity" class="text-2xl font-bold text-white">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Option Research -->
+                <div class="stat-card p-6 rounded-lg shadow-lg">
+                    <h2 class="text-xl font-semibold mb-4 text-white">Option Research & Probability</h2>
+                    <form id="research-form" class="space-y-4">
+                        <input type="text" id="research-ticker" placeholder="Ticker (e.g., PLTR)" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white placeholder-gray-400" required>
+                        <input type="number" step="0.01" id="research-strike" placeholder="Strike Price" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white placeholder-gray-400" required>
+                        <input type="date" id="research-expiry" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white placeholder-gray-400" required>
+                        <select id="research-type" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white" required>
+                            <option value="Call">Call</option>
+                            <option value="Put">Put</option>
+                        </select>
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all duration-200">
+                            Research Contract
+                        </button>
+                    </form>
+                </div>
+
+            </div>
+
+            <!-- Right Column: Positions -->
+            <div class="lg:col-span-2 space-y-6">
+
+                <!-- Open Positions -->
+                <div class="stat-card rounded-lg shadow-lg overflow-hidden">
+                    <h2 class="text-xl font-semibold text-white p-6">Open Positions</h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full">
+                            <thead class="table-header">
+                                <tr>
+                                    <th class="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ticker</th>
+                                    <th class="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Cost</th>
+                                    <th class="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Current Value</th>
+                                    <th class="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Unrealized P/L</th>
+                                    <th class="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="open-positions-table" class="bg-gray-800 divide-y divide-gray-700">
+                                <!-- Rows will be injected here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Closed Positions -->
+                <div class="stat-card rounded-lg shadow-lg overflow-hidden">
+                    <h2 class="text-xl font-semibold text-white p-6">Closed Positions</h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full">
+                            <thead class="table-header">
+                                <tr>
+                                    <th class="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ticker</th>
+                                    <th class="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Cost</th>
+                                    <th class="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Sale Price</th>
+                                    <th class="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Realized P/L</th>
+                                    <th class="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="closed-positions-table" class="bg-gray-800 divide-y divide-gray-700">
+                                <!-- Rows will be injected here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Deposits -->
+                <div class="stat-card rounded-lg shadow-lg overflow-hidden">
+                    <h2 class="text-xl font-semibold text-white p-6">Deposits</h2>
+                    <form id="deposit-form" class="px-6 pb-6 flex gap-4">
+                        <input type="number" step="0.01" id="deposit-amount" placeholder="Amount" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white placeholder-gray-400" required>
+                        <button type="submit" class="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-200">
+                            Add Deposit
+                        </button>
+                    </form>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full">
+                            <thead class="table-header">
+                                <tr>
+                                    <th class="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Date</th>
+                                    <th class="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Amount</th>
+                                    <!-- New "Actions" header -->
+                                    <th class="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="deposits-table" class="bg-gray-800 divide-y divide-gray-700">
+                                <!-- Rows will be injected here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+
+    <!-- Add/Edit Trade Modal -->
+    <div id="add-trade-modal" class="modal-overlay" onclick="closeModal(event, 'add-trade-modal')">
+        <div class="modal-content space-y-4">
+            <h3 id="trade-modal-title" class="text-xl font-semibold text-white">Add New Trade</h3>
+            <form id="add-trade-form" class="space-y-4">
+                <input type="hidden" id="tradeId">
+                <input type="text" id="ticker" placeholder="Ticker" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white placeholder-gray-400" required>
+                <select id="type" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white">
+                    <option value="Call">Call</option>
+                    <option value="Put">Put</option>
+                </select>
+                <input type="date" id="expiry" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white" placeholder="Expiry Date">
+                <input type="number" step="0.01" id="cost" placeholder="Total Cost" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white placeholder-gray-400" required>
+                
+                <div id="sale-price-group" class="hidden">
+                    <label for="salePrice" class="block text-sm font-medium text-gray-400">Sale Price (for closed trades)</label>
+                    <input type="number" step="0.01" id="salePrice" placeholder="Sale Price (if closed)" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white placeholder-gray-400">
+                </div>
+
+                <select id="status" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white">
+                    <option value="open">Open</option>
+                    <option value="closed">Closed</option>
+                </select>
+                <button id="trade-modal-submit-btn" type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all duration-200">
+                    Add Trade
+                </button>
+            </form>
+            <button class="modal-close-btn" onclick="closeModal(null, 'add-trade-modal')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Close Trade Modal -->
+    <div id="close-trade-modal" class="modal-overlay" onclick="closeModal(event, 'close-trade-modal')">
+        <div class="modal-content space-y-4">
+            <h3 class="text-xl font-semibold text-white">Close Position</h3>
+            <p id="close-trade-info" class="text-gray-300">Enter the final sale price for this trade.</p>
+            <form id="close-trade-form" class="space-y-4">
+                <input type="hidden" id="closeTradeId">
+                <input type="number" step="0.01" id="closeSalePrice" placeholder="Final Sale Price (Total)" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white placeholder-gray-400" required>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all duration-200">
+                    Close Trade
+                </button>
+            </form>
+            <button class="modal-close-btn" onclick="closeModal(null, 'close-trade-modal')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+    </div>
+    
+    <!-- Info Modal -->
+    <div id="info-modal" class="modal-overlay" onclick="closeModal(event, 'info-modal')">
+        <div class="modal-content space-y-4">
+            <h3 id="info-title" class="text-xl font-semibold text-white">Info</h3>
+            <div id="info-content" class="text-gray-300 space-y-2"></div>
+            <div id="info-sources" class="text-xs text-gray-500 pt-2 border-t border-gray-700"></div>
+            <button class="modal-close-btn" onclick="closeModal(null, 'info-modal')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Research Modal -->
+    <div id="research-modal" class="modal-overlay" onclick="closeModal(event, 'research-modal')">
+        <div class="modal-content space-y-4">
+            <h3 id="research-title" class="text-xl font-semibold text-white">Research</h3>
+            <div id="research-probability" class="probability-highlight" style="display: none;"></div>
+            <div id="research-content" class="text-gray-300 space-y-2"></div>
+            <div id="research-sources" class="text-xs text-gray-500 pt-2 border-t border-gray-700"></div>
+            <button class="modal-close-btn" onclick="closeModal(null, 'research-modal')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Alert/Confirm Modal -->
+    <div id="alert-modal" class="modal-overlay">
+        <div class="modal-content space-y-4">
+            <h3 id="alert-title" class="text-xl font-semibold text-white">Notice</h3>
+            <p id="alert-message" class="text-gray-300"></p>
+            <div id="alert-buttons" class="flex justify-end gap-4 pt-4">
+                <button id="alert-cancel-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-200">
+                    Cancel
+                </button>
+                <button id="alert-confirm-btn" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-200">
+                    Confirm
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // -----------------------------------------------------------------
+        // IMPORTANT: PASTE YOUR API KEY HERE
+        // -----------------------------------------------------------------
+        const apiKey = "AIzaSyB14x-1nDwUp4Gp4oUQZYtYdwvU-iOzZvk"; // API key is pre-filled
+        // -----------------------------------------------------------------
+
+        let trades = [];
+        let deposits = [];
+        let alertCallback = null;
+
+        // --- Initial Data (Reflects all final closed trades) ---
+        const initialTrades = [
+            { id: '1', ticker: 'NVDA Call', cost: 930, salePrice: 2125, status: 'closed', type: 'Call', expiry: '' },
+            { id: '2', ticker: 'MU Call', cost: 445, salePrice: 580, status: 'closed', type: 'Call', expiry: '' },
+            { id: '3', ticker: 'PLTR Call (1st)', cost: 566, salePrice: 600, status: 'closed', type: 'Call', expiry: '' },
+            { id: '4', ticker: 'APLT Call', cost: 230, salePrice: 0, status: 'closed', type: 'Call', expiry: '' },
+            { id: '5', ticker: 'PLTR Call (2nd)', cost: 545, salePrice: 1145, status: 'closed', type: 'Call', expiry: '' },
+            { id: '6', ticker: 'PLTR Call (3rd)', cost: 650, salePrice: 0, status: 'closed', type: 'Call', expiry: '' }
+        ];
+
+        const initialDeposits = [
+            { id: 'd1', amount: 930, date: '2025-10-01' },
+            { id: 'd2', amount: 550, date: '2025-10-02' },
+            { id: 'd3', amount: 390, date: '2025-10-03' }
+        ];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load from localStorage or use initial data
+            trades = JSON.parse(localStorage.getItem('trades')) || initialTrades.map(t => ({...t, profit: t.status === 'closed' ? t.salePrice - t.cost : 0}));
+            deposits = JSON.parse(localStorage.getItem('deposits')) || initialDeposits;
+
+            // --- Form Listeners ---
+            document.getElementById('add-trade-form').addEventListener('submit', handleAddTrade);
+            document.getElementById('deposit-form').addEventListener('submit', handleAddDeposit);
+            document.getElementById('research-form').addEventListener('submit', getContractInfo);
+            document.getElementById('close-trade-form').addEventListener('submit', handleCloseTrade);
+
+            // --- Modal Button Listeners ---
+            document.getElementById('alert-cancel-btn').addEventListener('click', () => {
+                closeModal(null, 'alert-modal');
+                alertCallback = null;
+            });
+            document.getElementById('alert-confirm-btn').addEventListener('click', () => {
+                if (typeof alertCallback === 'function') {
+                    alertCallback();
+                }
+                closeModal(null, 'alert-modal');
+                alertCallback = null;
+            });
+
+            // --- Show/Hide Sale Price on Status Change ---
+            document.getElementById('status').addEventListener('change', (e) => {
+                const salePriceGroup = document.getElementById('sale-price-group');
+                if (e.target.value === 'closed') {
+                    salePriceGroup.style.display = 'block';
+                } else {
+                    salePriceGroup.style.display = 'none';
+                }
+            });
+
+            // Initial Render
+            render();
+        });
+
+        // --- Data Persistence ---
+        function saveData() {
+            localStorage.setItem('trades', JSON.stringify(trades));
+            localStorage.setItem('deposits', JSON.stringify(deposits));
+        }
+
+        // --- Modal Controls ---
+        function openModal(modalId) {
+            document.getElementById(modalId).style.display = 'flex';
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        function closeModal(event, modalId) {
+            if (event && event.target !== event.currentTarget) {
+                return; // Clicked on content, not overlay
+            }
+            document.getElementById(modalId).style.display = 'none';
+        }
+        
+        function showAlert(title, message, onConfirm = null) {
+            document.getElementById('alert-title').textContent = title;
+            document.getElementById('alert-message').textContent = message;
+            alertCallback = onConfirm;
+
+            const confirmBtn = document.getElementById('alert-confirm-btn');
+            const cancelBtn = document.getElementById('alert-cancel-btn');
+
+            if (onConfirm) {
+                confirmBtn.style.display = 'block';
+                cancelBtn.style.display = 'block';
+                confirmBtn.textContent = "Confirm";
+            } else {
+                // It's just an "OK" alert
+                confirmBtn.textContent = "OK";
+                confirmBtn.style.display = 'block';
+                cancelBtn.style.display = 'none';
+                alertCallback = () => {}; // Just close the modal
+            }
+            openModal('alert-modal');
+        }
+
+        // --- Core Logic Functions ---
+
+        function openAddModal() {
+            document.getElementById('add-trade-form').reset();
+            document.getElementById('tradeId').value = '';
+            document.getElementById('trade-modal-title').textContent = 'Add New Trade';
+            document.getElementById('trade-modal-submit-btn').textContent = 'Add Trade';
+            document.getElementById('sale-price-group').style.display = 'none';
+            document.getElementById('status').value = 'open';
+            openModal('add-trade-modal');
+        }
+
+        function openEditModal(tradeId) {
+            const trade = trades.find(t => t.id === tradeId);
+            if (!trade) return;
+
+            document.getElementById('tradeId').value = trade.id;
+            document.getElementById('ticker').value = trade.ticker;
+            document.getElementById('type').value = trade.type;
+            document.getElementById('expiry').value = trade.expiry;
+            document.getElementById('cost').value = trade.cost;
+            document.getElementById('status').value = trade.status;
+            
+            const salePriceGroup = document.getElementById('sale-price-group');
+            if (trade.status === 'closed') {
+                document.getElementById('salePrice').value = trade.salePrice;
+                salePriceGroup.style.display = 'block';
+            } else {
+                document.getElementById('salePrice').value = '';
+                salePriceGroup.style.display = 'none';
+            }
+
+            document.getElementById('trade-modal-title').textContent = 'Edit Trade';
+            document.getElementById('trade-modal-submit-btn').textContent = 'Save Changes';
+            openModal('add-trade-modal');
+        }
+
+        function openCloseModal(tradeId) {
+            const trade = trades.find(t => t.id === tradeId);
+            if (!trade) return;
+
+            document.getElementById('closeTradeId').value = trade.id;
+            document.getElementById('close-trade-info').textContent = `Closing trade for ${trade.ticker}. Enter the final total sale price.`;
+            document.getElementById('close-trade-form').reset();
+            openModal('close-trade-modal');
+        }
+        
+        function handleAddTrade(e) {
+            e.preventDefault();
+            const tradeId = document.getElementById('tradeId').value;
+            
+            const tradeData = {
+                ticker: document.getElementById('ticker').value,
+                type: document.getElementById('type').value,
+                expiry: document.getElementById('expiry').value,
+                cost: parseFloat(document.getElementById('cost').value),
+                status: document.getElementById('status').value,
+                salePrice: parseFloat(document.getElementById('salePrice').value) || 0
+            };
+
+            if (tradeData.status === 'closed') {
+                tradeData.profit = tradeData.salePrice - tradeData.cost;
+            } else {
+                tradeData.salePrice = 0; // Ensure sale price is 0 if open
+                tradeData.profit = 0; // Will be calculated as unrealized
+            }
+
+            if (tradeId) {
+                // This is an Edit
+                const index = trades.findIndex(t => t.id === tradeId);
+                if (index > -1) {
+                    trades[index] = { ...trades[index], ...tradeData };
+                }
+            } else {
+                // This is a New Add
+                const newTrade = {
+                    id: crypto.randomUUID(),
+                    ...tradeData
+                };
+                trades.push(newTrade);
+            }
+
+            closeModal(null, 'add-trade-modal');
+            render();
+        }
+        
+        function handleCloseTrade(e) {
+            e.preventDefault();
+            const tradeId = document.getElementById('closeTradeId').value;
+            const salePrice = parseFloat(document.getElementById('closeSalePrice').value);
+
+            if (isNaN(salePrice)) {
+                showAlert('Invalid Input', 'Please enter a valid sale price.');
+                return;
+            }
+
+            const trade = trades.find(t => t.id === tradeId);
+            if (trade) {
+                trade.status = 'closed';
+                trade.salePrice = salePrice;
+                trade.profit = trade.salePrice - trade.cost;
+            }
+
+            closeModal(null, 'close-trade-modal');
+            render();
+        }
+
+        function deleteTrade(tradeId) {
+            const trade = trades.find(t => t.id === tradeId);
+            if (!trade) return;
+            
+            showAlert(
+                'Confirm Deletion', 
+                `Are you sure you want to delete the trade for ${trade.ticker}? This action cannot be undone.`, 
+                () => confirmDeleteTrade(tradeId)
+            );
+        }
+
+        function confirmDeleteTrade(tradeId) {
+            trades = trades.filter(t => t.id !== tradeId);
+            render();
+        }
+
+        function handleAddDeposit(e) {
+            e.preventDefault();
+            const amountInput = document.getElementById('deposit-amount');
+            const amount = parseFloat(amountInput.value);
+
+            if (isNaN(amount) || amount === 0) {
+                showAlert('Invalid Amount', 'Please enter a non-zero number for the deposit or withdrawal.');
+                return;
+            }
+            
+            const newDeposit = {
+                id: crypto.randomUUID(),
+                amount: amount, // Can be positive (deposit) or negative (withdrawal)
+                date: new Date().toISOString().split('T')[0]
+            };
+            deposits.push(newDeposit);
+            document.getElementById('deposit-form').reset();
+            render();
+        }
+        
+        // New function to delete a deposit
+        function deleteDeposit(depositId) {
+            const deposit = deposits.find(d => d.id === depositId);
+            if (!deposit) return;
+            
+            const action = deposit.amount > 0 ? "deposit" : "withdrawal";
+            
+            showAlert(
+                'Confirm Deletion', 
+                `Are you sure you want to delete the ${action} of ${formatCurrency(deposit.amount)} from ${deposit.date}? This action cannot be undone.`, 
+                () => confirmDeleteDeposit(depositId)
+            );
+        }
+
+        // New function to confirm deposit deletion
+        function confirmDeleteDeposit(depositId) {
+            deposits = deposits.filter(d => d.id !== depositId);
+            render();
+        }
+        
+        function formatCurrency(amount) {
+            const isNegative = amount < 0;
+            const formatted = Math.abs(amount).toLocaleString('en-US', {
+                style: 'currency',
+                currency: 'USD'
+            });
+            // Handle negative display for withdrawals/losses
+            return isNegative ? `(${formatted})` : formatted;
+        }
+
+        function formatProfitLoss(amount) {
+            const formatted = formatCurrency(amount);
+            if (amount > 0) {
+                return `<span class="profit">+${formatted}</span>`;
+            } else if (amount < 0) {
+                // formatCurrency already wrapped negatives in ()
+                return `<span class="loss">${formatted}</span>`;
+            }
+            return `<span>${formatted}</span>`;
+        }
+        
+        // --- Gemini API Call Functions ---
+
+        async function getTickerInfo(tradeId) {
+            const trade = trades.find(t => t.id === tradeId);
+            if (!trade) return;
+
+            const infoModalTitle = document.getElementById('info-title');
+            const infoModalContent = document.getElementById('info-content');
+            const infoModalSources = document.getElementById('info-sources');
+            
+            infoModalTitle.textContent = `Fetching info for ${trade.ticker}...`;
+            infoModalContent.innerHTML = '<div class="loader-container flex justify-center"><div class="loader"></div></div>';
+            infoModalSources.innerHTML = '';
+            openModal('info-modal');
+
+            if (!apiKey) {
+                infoModalTitle.textContent = 'API Key Error';
+                infoModalContent.textContent = 'API key is missing. Please add your Gemini API key to the script.';
+                return;
+            }
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const systemPrompt = "You are a financial news analyst. Provide a concise, bullet-pointed summary of the latest significant news and market sentiment for the given stock ticker. Focus on news from the last 7 days. Include a 'Recent Price Action' section.";
+            const userQuery = `Get latest news and sentiment for ${trade.ticker}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: userQuery }] }],
+                        tools: [{ "google_search": {} }],
+                        systemInstruction: { parts: [{ text: systemPrompt }] },
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+                const result = await response.json();
+                const candidate = result.candidates?.[0];
+
+                if (candidate && candidate.content?.parts?.[0]?.text) {
+                    const text = candidate.content.parts[0].text;
+                    // Format the text with line breaks
+                    const formattedText = text.replace(/\n/g, '<br>').replace(/\*\*/g, '<strong>').replace(/\*/g, '<br>• ');
+                    infoModalTitle.textContent = `Latest Info for ${trade.ticker}`;
+                    infoModalContent.innerHTML = formattedText;
+                    
+                    // Display sources
+                    let sources = [];
+                    const groundingMetadata = candidate.groundingMetadata;
+                    if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                        sources = groundingMetadata.groundingAttributions
+                            .map(attr => (attr.web?.uri ? { uri: attr.web.uri, title: attr.web.title || attr.web.uri } : null))
+                            .filter(source => source);
+                    }
+
+                    if (sources.length > 0) {
+                        infoModalSources.innerHTML = '<strong>Sources:</strong><br>' +
+                            sources.map(s => `<a href="${s.uri}" target="_blank" class="text-blue-400 hover:underline">${s.title}</a>`).join('<br>');
+                    }
+
+                } else {
+                    throw new Error('No content received from API.');
+                }
+
+            } catch (error) {
+                console.error('Gemini API call failed:', error);
+                infoModalTitle.textContent = 'Error';
+                infoModalContent.textContent = `Failed to process the API response: ${error.message}. Please check the console for details.`;
+            }
+        }
+
+        async function getContractInfo(e) {
+            e.preventDefault();
+            const ticker = document.getElementById('research-ticker').value;
+            const strike = document.getElementById('research-strike').value;
+            const expiry = document.getElementById('research-expiry').value;
+            const type = document.getElementById('research-type').value;
+
+            const researchModalTitle = document.getElementById('research-title');
+            const researchModalContent = document.getElementById('research-content');
+            const researchModalSources = document.getElementById('research-sources');
+            const researchModalProbability = document.getElementById('research-probability');
+
+            researchModalTitle.textContent = `Researching $${ticker} ${strike} ${type}...`;
+            researchModalContent.innerHTML = '<div class="loader-container flex justify-center"><div class="loader"></div></div>';
+            researchModalProbability.style.display = 'none';
+            researchModalSources.innerHTML = '';
+            openModal('research-modal');
+
+            if (!apiKey) {
+                researchModalTitle.textContent = 'API Key Error';
+                researchModalContent.textContent = 'API key is missing. Please add your Gemini API key to the script.';
+                return;
+            }
+
+            const systemPrompt = `You are a financial data assistant. Fetch the latest available option contract data for the requested contract.
+1.  First, provide a human-readable analysis text. If the exact contract is not found (e.g., too far OTM, no volume), state that clearly and, if possible, provide data for a nearby, more active contract for context.
+2.  Second, populate the JSON schema with the data.
+    -   IMPORTANT: For any string field you cannot find (like 'premium', 'delta', etc.), you MUST return null.
+    -   For 'requestedContract', find the data for the *exact* contract the user asked for. If you cannot find it, set 'found' to false and fill other fields with null.
+    -   For 'analysisText', provide the human-readable summary.
+    -   For 'nearbyContract', *only* populate this if you mentioned a nearby contract in your analysis text. If you do not find a nearby contract, set this field to null.`;
+            
+            const userQuery = `Fetch the current option contract details for ${ticker} $${strike} ${type} expiring on ${expiry}.`;
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+            // Define the JSON schema for the response
+            const responseSchema = {
+              "type": "OBJECT",
+              "properties": {
+                "requestedContract": {
+                  "type": "OBJECT",
+                  "properties": {
+                    "ticker": { "type": "STRING" },
+                    "strike": { "type": "STRING" },
+                    "type": { "type": "STRING" },
+                    "expiry": { "type": "STRING" },
+                    "premium": { "type": ["STRING", "NULL"] },
+                    "impliedVolatility": { "type": ["STRING", "NULL"] },
+                    "delta": { "type": ["STRING", "NULL"] },
+                    "theta": { "type": ["STRING", "NULL"] },
+                    "gamma": { "type": ["STRING", "NULL"] },
+                    "vega": { "type": ["STRING", "NULL"] },
+                    "found": { "type": "BOOLEAN" }
+                  }
+                },
+                "analysisText": { "type": "STRING" },
+                "nearbyContract": {
+                  "type": ["OBJECT", "NULL"],
+                  "properties": {
+                     "ticker": { "type": "STRING" },
+                     "strike": { "type": "STRING" },
+                     "type": { "type": "STRING" },
+                     "expiry": { "type": "STRING" },
+                     "premium": { "type": ["STRING", "NULL"] },
+                     "impliedVolatility": { "type": ["STRING", "NULL"] },
+                     "delta": { "type": ["STRING", "NULL"] }
+                  }
+                }
+              }
+            };
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                tools: [{ "google_search": {} }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: responseSchema
+                }
+            };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                const candidate = result.candidates?.[0];
+
+                if (candidate && candidate.content?.parts?.[0]?.text) {
+                    const jsonText = candidate.content.parts[0].text;
+                    const data = JSON.parse(jsonText);
+                    const contract = data.requestedContract;
+                    const analysis = data.analysisText;
+
+                    researchModalTitle.textContent = `Research for $${ticker} ${strike} ${type}`;
+                    // Set the human-readable analysis first
+                    researchModalContent.innerHTML = analysis.replace(/\n/g, '<br>');
+                    
+                    // --- This is the "Algorithm" part ---
+                    // Now, we use the structured JSON data for the probability
+                    if (contract.found && contract.delta) { // Check for null
+                        const delta = parseFloat(contract.delta);
+                        if (!isNaN(delta)) {
+                            const probability = Math.abs(delta * 100);
+                            researchModalProbability.innerHTML = `
+                                <p class="${probability > 50 ? 'text-green-400' : 'text-yellow-400'}">${probability.toFixed(1)}%</p>
+                                <p class="text-xs text-gray-400 uppercase tracking-wide">Approx. Probability of Expiring In-the-Money (based on Delta)</p>
+                            `;
+                            researchModalProbability.style.display = 'block';
+                        } else {
+                             researchModalProbability.innerHTML = `<p class="text-sm text-yellow-400">Could not parse Delta value ("${contract.delta}") to calculate probability. See analysis below.</p>`;
+                             researchModalProbability.style.display = 'block';
+                        }
+                    } else {
+                        // This handles the case where the contract wasn't found or delta was null
+                        researchModalProbability.innerHTML = `<p class="text-sm text-yellow-400">Could not automatically extract Delta for the requested contract. See analysis below.</p>`;
+                        researchModalProbability.style.display = 'block';
+                    }
+                    
+                    // Display sources (remains the same)
+                    let sources = [];
+                    const groundingMetadata = candidate.groundingMetadata;
+                    if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                        sources = groundingMetadata.groundingAttributions
+                            .map(attr => (attr.web?.uri ? { uri: attr.web.uri, title: attr.web.title || attr.web.uri } : null))
+                            .filter(source => source);
+                    }
+
+                    if (sources.length > 0) {
+                        researchModalSources.innerHTML = '<strong>Sources:</strong><br>' +
+                            sources.map(s => `<a href="${s.uri}" target="_blank" class="text-blue-400 hover:underline">${s.title}</a>`).join('<br>');
+                    }
+                } else {
+                    throw new Error('No content received from API.');
+                }
+            } catch (error) {
+                console.error('Gemini API call failed:', error);
+                researchModalTitle.textContent = 'Error';
+                researchModalContent.textContent = `Failed to process the API response: ${error.message}. Check console for (possibly malformed) JSON response.`;
+            }
+        }
+
+        // --- Render Function ---
+        function render() {
+            // Save data to localStorage on every render
+            saveData();
+
+            const openPositionsTable = document.getElementById('open-positions-table');
+            const closedPositionsTable = document.getElementById('closed-positions-table');
+            const depositsTable = document.getElementById('deposits-table');
+            
+            let openTradesHtml = '';
+            let closedTradesHtml = '';
+            let depositsHtml = '';
+
+            let totalRealizedPL = 0;
+            let totalUnrealizedPL = 0; // This would require a live price feed, so we'll just show 0
+            let totalDeposits = 0;
+
+            const openTrades = trades.filter(t => t.status === 'open');
+            const closedTrades = trades.filter(t => t.status === 'closed');
+
+            if (openTrades.length === 0) {
+                openTradesHtml = '<tr><td colspan="5" class="text-center py-4 text-gray-500">No open positions.</td></tr>';
+            } else {
+                openTrades.forEach(trade => {
+                    // Since we don't have a live price, we can't calculate a real-time unrealized P/L.
+                    // We'll show "N/A"
+                    const unrealizedPL = "N/A"; 
+                    openTradesHtml += `
+                        <tr class="table-row">
+                            <td class="py-3 px-4 text-sm font-medium text-white">${trade.ticker}</td>
+                            <td class="py-3 px-4 text-sm text-gray-300">${formatCurrency(trade.cost)}</td>
+                            <td class="py-3 px-4 text-sm text-gray-300">N/A</td>
+                            <td class="py-3 px-4 text-sm text-gray-300">${unrealizedPL}</td>
+                            <td class="py-3 px-4 text-sm space-x-2 flex items-center">
+                                <button onclick="openCloseModal('${trade.id}')" class="action-btn action-btn-blue">Close</button>
+                                <button onclick="getTickerInfo('${trade.id}')" class="action-btn action-btn-gray" title="Get Info">
+                                    <i data-lucide="info" class="w-4 h-4 inline-block"></i>
+                                </button>
+                                <i data-lucide="trash-2" class="action-btn-icon" onclick="deleteTrade('${trade.id}')"></i>
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+
+            if (closedTrades.length === 0) {
+                closedTradesHtml = '<tr><td colspan="5" class="text-center py-4 text-gray-500">No closed positions.</td></tr>';
+            } else {
+                closedTrades.forEach(trade => {
+                    totalRealizedPL += trade.profit;
+                    closedTradesHtml += `
+                        <tr class="table-row">
+                            <td class="py-3 px-4 text-sm font-medium text-white">${trade.ticker}</td>
+                            <td class="py-3 px-4 text-sm text-gray-300">${formatCurrency(trade.cost)}</td>
+                            <td class="py-3 px-4 text-sm text-gray-300">${formatCurrency(trade.salePrice)}</td>
+                            <td class="py-3 px-4 text-sm">${formatProfitLoss(trade.profit)}</td>
+                            <td class="py-3 px-4 text-sm space-x-2 flex items-center">
+                                <button onclick="openEditModal('${trade.id}')" class="action-btn action-btn-gray" title="Edit">
+                                    <i data-lucide="edit-2" class="w-4 h-4 inline-block"></i>
+                                </button>
+                                <i data-lucide="trash-2" class="action-btn-icon" onclick="deleteTrade('${trade.id}')"></i>
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+
+            // Updated: Render Deposits table
+            if (deposits.length === 0) {
+                depositsHtml = '<tr><td colspan="3" class="text-center py-4 text-gray-500">No deposits recorded.</td></tr>';
+            } else {
+                deposits.forEach(deposit => {
+                    totalDeposits += deposit.amount;
+                    depositsHtml += `
+                        <tr class="table-row">
+                            <td class="py-3 px-4 text-sm text-gray-300">${deposit.date}</td>
+                            <td class="py-3 px-4 text-sm ${deposit.amount < 0 ? 'text-red-400' : 'text-white'}">
+                                ${formatCurrency(deposit.amount)}
+                            </td>
+                            <td class="py-3 px-4 text-sm">
+                                <i data-lucide="trash-2" class="action-btn-icon" onclick="deleteDeposit('${deposit.id}')"></i>
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+
+            openPositionsTable.innerHTML = openTradesHtml;
+            closedPositionsTable.innerHTML = closedTradesHtml;
+            depositsTable.innerHTML = depositsHtml;
+            
+            // Update Summary
+            const totalEquity = totalDeposits + totalRealizedPL + totalUnrealizedPL; // totalUnrealizedPL is 0
+            document.getElementById('summary-deposits').textContent = formatCurrency(totalDeposits);
+            document.getElementById('summary-realized-pl').innerHTML = formatProfitLoss(totalRealizedPL);
+            document.getElementById('summary-unrealized-pl').textContent = formatCurrency(totalUnrealizedPL); // Will show $0.00
+            document.getElementById('summary-equity').textContent = formatCurrency(totalEquity);
+
+            // Initialize icons
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+    </script>
+</body>
+</html>
