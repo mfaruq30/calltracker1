@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en" class="h-full bg-gray-900">
 <head>
-    <meta charset="UTF-R">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Options Portfolio Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -124,6 +124,13 @@
         }
         .action-btn-icon:hover {
             color: #ef4444; /* red-500 */
+        }
+        .action-btn-purple {
+            background-color: #7c3aed; /* violet-600 */
+            color: white;
+        }
+        .action-btn-purple:hover {
+            background-color: #6d28d9; /* violet-700 */
         }
     </style>
 </head>
@@ -280,7 +287,10 @@
                 </select>
                 <input type="date" id="expiry" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white" placeholder="Expiry Date">
                 <input type="number" step="0.01" id="cost" placeholder="Total Cost" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white placeholder-gray-400" required>
-                
+                <input type="number" step="0.01" id="strikePrice" placeholder="Strike Price" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white placeholder-gray-400">
+                <input type="number" step="0.01" id="underlyingPrice" placeholder="Current Underlying Price" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white placeholder-gray-400">
+                <input type="number" step="0.01" id="impliedVolatility" placeholder="Implied Volatility (%)" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white placeholder-gray-400">
+
                 <div id="sale-price-group" class="hidden">
                     <label for="salePrice" class="block text-sm font-medium text-gray-400">Sale Price (for closed trades)</label>
                     <input type="number" step="0.01" id="salePrice" placeholder="Sale Price (if closed)" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white placeholder-gray-400">
@@ -343,6 +353,30 @@
         </div>
     </div>
 
+    <!-- Probability Modal -->
+    <div id="probability-modal" class="modal-overlay" onclick="closeModal(event, 'probability-modal')">
+        <div class="modal-content space-y-4">
+            <h3 id="probability-title" class="text-xl font-semibold text-white">Probability Analysis</h3>
+            <div id="probability-score" class="probability-highlight" style="display: none;">
+                <p class="text-blue-400">0%</p>
+                <p class="text-xs text-gray-400 uppercase tracking-wide">Likelihood of finishing in the money</p>
+            </div>
+            <div id="probability-summary" class="text-gray-300 space-y-2"></div>
+            <div>
+                <h4 class="text-sm font-semibold text-gray-200 uppercase tracking-wide">Key Drivers</h4>
+                <ul id="probability-breakdown" class="list-disc list-inside text-gray-300 space-y-1"></ul>
+            </div>
+            <div id="probability-news" class="text-sm text-gray-400 space-y-2"></div>
+            <details class="bg-gray-800/70 border border-gray-700 rounded-lg p-3">
+                <summary class="cursor-pointer text-sm font-semibold text-gray-200">Books referenced in this model</summary>
+                <ul id="probability-books" class="mt-2 list-disc list-inside text-gray-300 space-y-1"></ul>
+            </details>
+            <button class="modal-close-btn" onclick="closeModal(null, 'probability-modal')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+    </div>
+
     <!-- Alert/Confirm Modal -->
     <div id="alert-modal" class="modal-overlay">
         <div class="modal-content space-y-4">
@@ -364,6 +398,18 @@
         // IMPORTANT: PASTE YOUR API KEY HERE
         // -----------------------------------------------------------------
         const apiKey = ""; // API key is pre-filled
+        const OPTION_BOOK_INSIGHTS = [
+            { title: 'Options as a Strategic Investment — Lawrence G. McMillan', focus: 'Position structure, trend confirmation, and disciplined risk management.' },
+            { title: 'Option Volatility & Pricing — Sheldon Natenberg', focus: 'Quantitative modeling with Black-Scholes, volatility smiles, and risk sensitivities.' },
+            { title: 'Trading Options Greeks — Dan Passarelli', focus: 'How delta, gamma, theta, and vega shape probability as expiry approaches.' },
+            { title: 'The Options Playbook — Brian Overby', focus: 'Pattern recognition for common strategies and practical trade selection.' },
+            { title: 'The Bible of Options Strategies — Guy Cohen', focus: 'Strategy selection grids tied to market outlook and reward-to-risk balance.' },
+            { title: 'Fundamentals of Futures and Options Markets — John C. Hull', focus: 'Foundational derivatives math and risk-neutral pricing concepts.' },
+            { title: 'Volatility Trading — Euan Sinclair', focus: 'Volatility forecasting and regime awareness for probability adjustments.' },
+            { title: 'Option Spread Trading — Russell Rhoads', focus: 'Spread construction and using skew information for scenario analysis.' },
+            { title: 'The Complete Guide to Option Selling — James Cordier & Michael Gross', focus: 'Income-style trades and managing tail risk when probability seems favorable.' },
+            { title: 'Options Made Easy — Guy Cohen', focus: 'Checklist-driven evaluation of technical, fundamental, and volatility inputs.' }
+        ];
         // -----------------------------------------------------------------
 
         let trades = [];
@@ -388,7 +434,7 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             // Load from localStorage or use initial data
-            trades = JSON.parse(localStorage.getItem('trades')) || initialTrades.map(t => ({...t, profit: t.status === 'closed' ? t.salePrice - t.cost : 0}));
+            trades = (JSON.parse(localStorage.getItem('trades')) || initialTrades).map(ensureTradeShape);
             deposits = JSON.parse(localStorage.getItem('deposits')) || initialDeposits;
 
             // --- Form Listeners ---
@@ -396,6 +442,8 @@
             document.getElementById('deposit-form').addEventListener('submit', handleAddDeposit);
             document.getElementById('research-form').addEventListener('submit', getContractInfo);
             document.getElementById('close-trade-form').addEventListener('submit', handleCloseTrade);
+
+            populateProbabilityBooks();
 
             // --- Modal Button Listeners ---
             document.getElementById('alert-cancel-btn').addEventListener('click', () => {
@@ -412,17 +460,312 @@
 
             // --- Show/Hide Sale Price on Status Change ---
             document.getElementById('status').addEventListener('change', (e) => {
-                const salePriceGroup = document.getElementById('sale-price-group');
-                if (e.target.value === 'closed') {
-                    salePriceGroup.style.display = 'block';
-                } else {
-                    salePriceGroup.style.display = 'none';
-                }
+                toggleSalePriceVisibility(e.target.value === 'closed');
             });
 
             // Initial Render
             render();
         });
+
+        function populateProbabilityBooks() {
+            const booksList = document.getElementById('probability-books');
+            if (!booksList) return;
+            booksList.innerHTML = OPTION_BOOK_INSIGHTS
+                .map(book => `<li><span class="font-semibold">${book.title}</span> — ${book.focus}</li>`)
+                .join('');
+        }
+
+        function toggleSalePriceVisibility(shouldShow) {
+            const salePriceGroup = document.getElementById('sale-price-group');
+            if (!salePriceGroup) return;
+            salePriceGroup.style.display = shouldShow ? 'block' : 'none';
+            salePriceGroup.classList.toggle('hidden', !shouldShow);
+        }
+
+        function parseNullableNumber(value) {
+            if (value === null || value === undefined || value === '') return null;
+            const parsed = parseFloat(value);
+            return Number.isFinite(parsed) ? parsed : null;
+        }
+
+        function parseVolValue(value) {
+            if (value === null || value === undefined || value === '') return null;
+            const parsed = parseFloat(value);
+            if (!Number.isFinite(parsed)) return null;
+            return parsed > 1.5 ? parsed / 100 : parsed;
+        }
+
+        function formatVolForInput(value) {
+            if (value === null || value === undefined || value === '') return '';
+            const percent = value > 1 ? value : value * 100;
+            return Number.isFinite(percent) ? Number(percent.toFixed(2)).toString() : '';
+        }
+
+        function ensureTradeShape(rawTrade) {
+            const trade = {
+                id: rawTrade.id || crypto.randomUUID(),
+                ticker: rawTrade.ticker || '',
+                type: rawTrade.type || 'Call',
+                expiry: rawTrade.expiry || '',
+                cost: Number.isFinite(rawTrade.cost) ? rawTrade.cost : parseFloat(rawTrade.cost) || 0,
+                status: rawTrade.status || 'open',
+                salePrice: Number.isFinite(rawTrade.salePrice) ? rawTrade.salePrice : parseFloat(rawTrade.salePrice) || 0,
+                profit: Number.isFinite(rawTrade.profit) ? rawTrade.profit : 0,
+                strikePrice: parseNullableNumber(rawTrade.strikePrice),
+                underlyingPrice: parseNullableNumber(rawTrade.underlyingPrice),
+                impliedVolatility: parseVolValue(rawTrade.impliedVolatility)
+            };
+
+            if (trade.status === 'closed') {
+                trade.profit = trade.salePrice - trade.cost;
+            } else {
+                trade.salePrice = 0;
+                trade.profit = 0;
+            }
+
+            return trade;
+        }
+
+        function formatPercentage(value) {
+            return `${(value * 100).toFixed(1)}%`;
+        }
+
+        function erf(x) {
+            // Numerical approximation (Abramowitz and Stegun formula 7.1.26)
+            const sign = Math.sign(x);
+            const a1 = 0.254829592;
+            const a2 = -0.284496736;
+            const a3 = 1.421413741;
+            const a4 = -1.453152027;
+            const a5 = 1.061405429;
+            const p = 0.3275911;
+            const absX = Math.abs(x);
+            const t = 1 / (1 + p * absX);
+            const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-absX * absX);
+            return sign * y;
+        }
+
+        function normCDF(x) {
+            return 0.5 * (1 + erf(x / Math.sqrt(2)));
+        }
+
+        function calculateProbabilityAnalysis(trade, sentimentResult) {
+            const breakdown = [];
+            const now = new Date();
+            const expiryDate = trade.expiry ? new Date(trade.expiry) : null;
+            const timeToExpiryYears = expiryDate ? Math.max((expiryDate - now) / (1000 * 60 * 60 * 24 * 365), 0) : null;
+
+            let probability = 0.5; // neutral baseline
+            let baseCommentary = 'Baseline probability set to neutral (50%) due to limited quantitative inputs.';
+
+            if (trade.strikePrice !== null && trade.underlyingPrice !== null && trade.strikePrice > 0 && trade.underlyingPrice > 0 && timeToExpiryYears && timeToExpiryYears > 0 && trade.impliedVolatility) {
+                const vol = trade.impliedVolatility;
+                const s = trade.underlyingPrice;
+                const k = trade.strikePrice;
+                const logTerm = Math.log(s / k);
+                const d1 = (logTerm + 0.5 * vol * vol * timeToExpiryYears) / (vol * Math.sqrt(timeToExpiryYears));
+                const d2 = d1 - vol * Math.sqrt(timeToExpiryYears);
+                probability = trade.type === 'Call' ? normCDF(d2) : normCDF(-d2);
+                baseCommentary = `Black-Scholes style estimate (per Natenberg & Hull) using strike ${k.toFixed(2)}, underlying ${s.toFixed(2)}, volatility ${(vol * 100).toFixed(1)}%, and ${Math.round(timeToExpiryYears * 365)} days to expiry.`;
+            }
+
+            breakdown.push({
+                source: 'Option Volatility & Pricing / Fundamentals of Futures and Options Markets',
+                message: baseCommentary,
+                weight: 0.35
+            });
+
+            if (trade.strikePrice !== null && trade.underlyingPrice !== null) {
+                const distance = (trade.underlyingPrice - trade.strikePrice) / trade.strikePrice;
+                const adjustment = Math.max(Math.min(distance * 0.6, 0.15), -0.15);
+                probability += trade.type === 'Call' ? adjustment : -adjustment;
+                const orientation = trade.type === 'Call'
+                    ? (distance >= 0 ? 'above strike (ITM bias)' : 'below strike (OTM risk)')
+                    : (distance <= 0 ? 'below strike (ITM bias)' : 'above strike (OTM risk)');
+                breakdown.push({
+                    source: 'Options as a Strategic Investment / The Options Playbook',
+                    message: `Underlying is ${orientation}; adjustment of ${(adjustment * 100).toFixed(1)} percentage points applied to reflect trend alignment guidance.`,
+                    weight: 0.2
+                });
+            }
+
+            if (timeToExpiryYears !== null) {
+                if (timeToExpiryYears < 14 / 365) {
+                    const thetaDrag = -0.05;
+                    probability += thetaDrag;
+                    breakdown.push({
+                        source: 'Trading Options Greeks',
+                        message: 'Expiry within two weeks increases theta pressure; subtracting 5 percentage points.',
+                        weight: 0.1
+                    });
+                } else if (timeToExpiryYears > 90 / 365) {
+                    const longTimeBoost = 0.03;
+                    probability += longTimeBoost;
+                    breakdown.push({
+                        source: 'The Bible of Options Strategies',
+                        message: 'Longer duration allows the thesis to develop; adding 3 percentage points.',
+                        weight: 0.08
+                    });
+                }
+            }
+
+            if (trade.impliedVolatility) {
+                if (trade.impliedVolatility > 0.6) {
+                    const volPenalty = -0.04;
+                    probability += volPenalty;
+                    breakdown.push({
+                        source: 'Volatility Trading / Option Spread Trading',
+                        message: 'Elevated implied volatility suggests larger swings; subtracting 4 percentage points for potential whipsaws.',
+                        weight: 0.07
+                    });
+                } else if (trade.impliedVolatility < 0.2) {
+                    const volBoost = 0.02;
+                    probability += volBoost;
+                    breakdown.push({
+                        source: 'Options Made Easy',
+                        message: 'Quieter volatility regime; adding 2 percentage points for stability.',
+                        weight: 0.05
+                    });
+                }
+            }
+
+            let sentimentSummary = 'News sentiment unavailable. Add an API key to blend current headlines into the probability.';
+            if (sentimentResult) {
+                const sentimentAdjustment = Math.max(Math.min(sentimentResult.sentimentScore * 0.1, 0.08), -0.08);
+                probability += sentimentAdjustment;
+                const momentumAdjustment = Math.max(Math.min((sentimentResult.momentumScore || 0) * 0.05, 0.05), -0.05);
+                probability += momentumAdjustment;
+                const combinedAdjustment = sentimentAdjustment + momentumAdjustment;
+                sentimentSummary = `News & momentum composite adjusted probability by ${(combinedAdjustment * 100).toFixed(1)} percentage points (McMillan trend confirmation + Cohen checklist).`;
+                breakdown.push({
+                    source: 'Options as a Strategic Investment / Options Made Easy',
+                    message: sentimentSummary,
+                    weight: 0.1
+                });
+            }
+
+            probability = Math.max(0.05, Math.min(0.95, probability));
+
+            const summary = probability >= 0.5
+                ? 'Setup currently leans favorable. Continue to monitor volatility and news momentum.'
+                : 'Setup skews against finishing in the money. Consider risk adjustments or exit triggers.';
+
+            return {
+                probability,
+                breakdown,
+                summary,
+                sentimentSummary
+            };
+        }
+
+        async function fetchProbabilitySentiment(trade) {
+            if (!apiKey) {
+                return null;
+            }
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const promptBooks = OPTION_BOOK_INSIGHTS.map(b => b.title.split(' — ')[0]).join(', ');
+            const userQuery = `Evaluate the current news, analyst commentary, and price momentum for ${trade.ticker || 'this equity'}. Provide sentiment (-1 to 1) and price momentum (-1 to 1) for the past 7 days.`;
+            const systemPrompt = `You are an options strategist trained on ${promptBooks}. Return strict JSON with keys sentimentScore (-1 to 1), momentumScore (-1 to 1), highlights (array of up to 3 short bullet strings). Use recent news and price commentary.`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                tools: [{ google_search: {} }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                        type: 'OBJECT',
+                        properties: {
+                            sentimentScore: { type: 'NUMBER' },
+                            momentumScore: { type: 'NUMBER' },
+                            highlights: {
+                                type: 'ARRAY',
+                                items: { type: 'STRING' }
+                            }
+                        },
+                        required: ['sentimentScore']
+                    }
+                }
+            };
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+
+            const result = await response.json();
+            const candidate = result.candidates?.[0];
+            if (!candidate || !candidate.content?.parts?.[0]?.text) {
+                throw new Error('No sentiment content received.');
+            }
+
+            return JSON.parse(candidate.content.parts[0].text);
+        }
+
+        async function openProbabilityModal(tradeId) {
+            const trade = trades.find(t => t.id === tradeId);
+            if (!trade) return;
+
+            const modalTitle = document.getElementById('probability-title');
+            const scoreHighlight = document.getElementById('probability-score');
+            const summaryEl = document.getElementById('probability-summary');
+            const breakdownEl = document.getElementById('probability-breakdown');
+            const newsEl = document.getElementById('probability-news');
+
+            modalTitle.textContent = `Probability outlook for ${trade.ticker}`;
+            summaryEl.innerHTML = '<div class="loader"></div>';
+            breakdownEl.innerHTML = '';
+            newsEl.innerHTML = '';
+            scoreHighlight.style.display = 'none';
+
+            openModal('probability-modal');
+
+            let sentimentResult = null;
+            try {
+                sentimentResult = await fetchProbabilitySentiment(trade);
+            } catch (error) {
+                if (apiKey) {
+                    newsEl.innerHTML = `<p class="text-red-400">Sentiment lookup failed: ${error.message}</p>`;
+                } else {
+                    newsEl.innerHTML = '<p class="text-yellow-400">Add your Gemini API key to include live news sentiment.</p>';
+                }
+            }
+
+            const analysis = calculateProbabilityAnalysis(trade, sentimentResult);
+
+            summaryEl.textContent = analysis.summary;
+            scoreHighlight.innerHTML = `
+                <p class="${analysis.probability >= 0.5 ? 'text-green-400' : 'text-red-400'} text-3xl font-bold">${formatPercentage(analysis.probability)}</p>
+                <p class="text-xs text-gray-400 uppercase tracking-wide">Likelihood of finishing in the money</p>
+            `;
+            scoreHighlight.style.display = 'block';
+
+            breakdownEl.innerHTML = analysis.breakdown
+                .map(item => `<li><span class="font-semibold">${item.source}:</span> ${item.message}</li>`)
+                .join('');
+
+            if (sentimentResult && Array.isArray(sentimentResult.highlights) && sentimentResult.highlights.length > 0) {
+                newsEl.innerHTML = `
+                    <h4 class="text-sm font-semibold text-gray-200 uppercase tracking-wide">Latest catalysts</h4>
+                    <ul class="list-disc list-inside space-y-1">
+                        ${sentimentResult.highlights.map(h => `<li>${h}</li>`).join('')}
+                    </ul>
+                    <p class="text-xs text-gray-500">${analysis.sentimentSummary}</p>
+                `;
+            } else if (analysis.sentimentSummary) {
+                newsEl.innerHTML = `<p class="text-xs text-gray-500">${analysis.sentimentSummary}</p>`;
+            }
+
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
 
         // --- Data Persistence ---
         function saveData() {
@@ -474,7 +817,7 @@
             document.getElementById('tradeId').value = '';
             document.getElementById('trade-modal-title').textContent = 'Add New Trade';
             document.getElementById('trade-modal-submit-btn').textContent = 'Add Trade';
-            document.getElementById('sale-price-group').style.display = 'none';
+            toggleSalePriceVisibility(false);
             document.getElementById('status').value = 'open';
             openModal('add-trade-modal');
         }
@@ -489,14 +832,16 @@
             document.getElementById('expiry').value = trade.expiry;
             document.getElementById('cost').value = trade.cost;
             document.getElementById('status').value = trade.status;
-            
-            const salePriceGroup = document.getElementById('sale-price-group');
+            document.getElementById('strikePrice').value = trade.strikePrice ?? '';
+            document.getElementById('underlyingPrice').value = trade.underlyingPrice ?? '';
+            document.getElementById('impliedVolatility').value = formatVolForInput(trade.impliedVolatility);
+
             if (trade.status === 'closed') {
                 document.getElementById('salePrice').value = trade.salePrice;
-                salePriceGroup.style.display = 'block';
+                toggleSalePriceVisibility(true);
             } else {
                 document.getElementById('salePrice').value = '';
-                salePriceGroup.style.display = 'none';
+                toggleSalePriceVisibility(false);
             }
 
             document.getElementById('trade-modal-title').textContent = 'Edit Trade';
@@ -517,14 +862,20 @@
         function handleAddTrade(e) {
             e.preventDefault();
             const tradeId = document.getElementById('tradeId').value;
-            
+            const strikePrice = parseNullableNumber(document.getElementById('strikePrice').value);
+            const underlyingPrice = parseNullableNumber(document.getElementById('underlyingPrice').value);
+            const impliedVolatility = parseVolValue(document.getElementById('impliedVolatility').value);
+
             const tradeData = {
                 ticker: document.getElementById('ticker').value,
                 type: document.getElementById('type').value,
                 expiry: document.getElementById('expiry').value,
                 cost: parseFloat(document.getElementById('cost').value),
                 status: document.getElementById('status').value,
-                salePrice: parseFloat(document.getElementById('salePrice').value) || 0
+                salePrice: parseFloat(document.getElementById('salePrice').value) || 0,
+                strikePrice,
+                underlyingPrice,
+                impliedVolatility
             };
 
             if (tradeData.status === 'closed') {
@@ -538,14 +889,14 @@
                 // This is an Edit
                 const index = trades.findIndex(t => t.id === tradeId);
                 if (index > -1) {
-                    trades[index] = { ...trades[index], ...tradeData };
+                    trades[index] = ensureTradeShape({ ...trades[index], ...tradeData });
                 }
             } else {
                 // This is a New Add
-                const newTrade = {
+                const newTrade = ensureTradeShape({
                     id: crypto.randomUUID(),
                     ...tradeData
-                };
+                });
                 trades.push(newTrade);
             }
 
@@ -876,6 +1227,7 @@
 
         // --- Render Function ---
         function render() {
+            trades = trades.map(ensureTradeShape);
             // Save data to localStorage on every render
             saveData();
 
@@ -897,21 +1249,22 @@
             if (openTrades.length === 0) {
                 openTradesHtml = '<tr><td colspan="5" class="text-center py-4 text-gray-500">No open positions.</td></tr>';
             } else {
-                openTrades.forEach(trade => {
-                    // Since we don't have a live price, we can't calculate a real-time unrealized P/L.
-                    // We'll show "N/A"
-                    const unrealizedPL = "N/A"; 
-                    openTradesHtml += `
-                        <tr class="table-row">
-                            <td class="py-3 px-4 text-sm font-medium text-white">${trade.ticker}</td>
-                            <td class="py-3 px-4 text-sm text-gray-300">${formatCurrency(trade.cost)}</td>
-                            <td class="py-3 px-4 text-sm text-gray-300">N/A</td>
-                            <td class="py-3 px-4 text-sm text-gray-300">${unrealizedPL}</td>
-                            <td class="py-3 px-4 text-sm space-x-2 flex items-center">
-                                <button onclick="openCloseModal('${trade.id}')" class="action-btn action-btn-blue">Close</button>
-                                <button onclick="getTickerInfo('${trade.id}')" class="action-btn action-btn-gray" title="Get Info">
-                                    <i data-lucide="info" class="w-4 h-4 inline-block"></i>
-                                </button>
+                    openTrades.forEach(trade => {
+                        // Since we don't have a live price, we can't calculate a real-time unrealized P/L.
+                        // We'll show "N/A"
+                        const unrealizedPL = "N/A";
+                        openTradesHtml += `
+                            <tr class="table-row">
+                                <td class="py-3 px-4 text-sm font-medium text-white">${trade.ticker}</td>
+                                <td class="py-3 px-4 text-sm text-gray-300">${formatCurrency(trade.cost)}</td>
+                                <td class="py-3 px-4 text-sm text-gray-300">N/A</td>
+                                <td class="py-3 px-4 text-sm text-gray-300">${unrealizedPL}</td>
+                                <td class="py-3 px-4 text-sm space-x-2 flex items-center">
+                                    <button onclick="openProbabilityModal('${trade.id}')" class="action-btn action-btn-purple">Probability</button>
+                                    <button onclick="openCloseModal('${trade.id}')" class="action-btn action-btn-blue">Close</button>
+                                    <button onclick="getTickerInfo('${trade.id}')" class="action-btn action-btn-gray" title="Get Info">
+                                        <i data-lucide="info" class="w-4 h-4 inline-block"></i>
+                                    </button>
                                 <i data-lucide="trash-2" class="action-btn-icon" onclick="deleteTrade('${trade.id}')"></i>
                             </td>
                         </tr>
